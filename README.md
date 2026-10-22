@@ -199,4 +199,4 @@ Resultados cobertos:
 ---
 
 ## 👨‍💻 Autor
-Desenvolvido por **Paulo HFA** para sistemas de gestão empresarial.
+Desenvolvido por **Paulo HFA**
