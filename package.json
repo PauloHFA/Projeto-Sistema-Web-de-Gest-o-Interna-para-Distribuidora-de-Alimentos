@@ -1,0 +1,17 @@
+{
+  "name": "distribuidora-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:init": "docker compose exec -T postgres psql -U postgres -d distribuidora_db < database/schema.sql",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev"
+  }
+}
+

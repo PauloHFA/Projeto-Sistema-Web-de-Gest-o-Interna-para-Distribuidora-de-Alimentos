@@ -1,0 +1,334 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum StatusPedido {
+  RASCUNHO
+  CONFIRMADO
+  SEPARADO
+  FATURADO
+  ENTREGUE
+  CANCELADO
+}
+
+enum TipoMovimentacaoEstoque {
+  ENTRADA
+  SAIDA
+  AJUSTE
+  PERDA_AVARIA
+  DEVOLUCAO
+}
+
+enum StatusFinanceiro {
+  PENDENTE
+  PARCIAL
+  PAGO
+  CANCELADO
+}
+
+enum TipoCategoriaFinanceira {
+  RECEITA
+  DESPESA
+}
+
+enum GrupoDRE {
+  RECEITA_BRUTA
+  DEDUCOES
+  CMV
+  DESPESA_OPERACIONAL
+  OUTRAS
+}
+
+model Perfil {
+  id         Int               @id @default(autoincrement())
+  nome       String            @unique @db.VarChar(50)
+  descricao  String?           @db.Text
+  criadoEm   DateTime          @default(now()) @map("criado_em")
+  usuarios   Usuario[]
+  permissoes PerfilPermissao[]
+
+  @@map("perfis")
+}
+
+model Permissao {
+  id         Int               @id @default(autoincrement())
+  recurso    String            @db.VarChar(50)
+  acao       String            @db.VarChar(50)
+  descricao  String?           @db.Text
+  perfis     PerfilPermissao[]
+
+  @@unique([recurso, acao])
+  @@map("permissoes")
+}
+
+model PerfilPermissao {
+  perfilId    Int       @map("perfil_id")
+  permissaoId Int       @map("permissao_id")
+  perfil      Perfil    @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+  permissao   Permissao @relation(fields: [permissaoId], references: [id], onDelete: Cascade)
+
+  @@id([perfilId, permissaoId])
+  @@map("perfis_permissoes")
+}
+
+model Usuario {
+  id           Int                   @id @default(autoincrement())
+  nome         String                @db.VarChar(120)
+  email        String                @unique @db.VarChar(150)
+  senhaHash    String                @map("senha_hash") @db.VarChar(255)
+  perfilId     Int                   @map("perfil_id")
+  perfil       Perfil                @relation(fields: [perfilId], references: [id])
+  ativo        Boolean               @default(true)
+  criadoEm     DateTime              @default(now()) @map("criado_em")
+  atualizadoEm DateTime              @default(now()) @updatedAt @map("atualizado_em")
+  
+  clientes     Cliente[]             @relation("VendedorClientes")
+  pedidos      Pedido[]              @relation("VendedorPedidos")
+  aprovacoes   Pedido[]              @relation("AprovadorDescontos")
+  movimentacoes MovimentacaoEstoque[]
+  historicoPedidos PedidoHistorico[]
+  auditorias   Auditoria[]
+  importacoes  Importacao[]
+
+  @@map("usuarios")
+}
+
+model Cliente {
+  id                 Int            @id @default(autoincrement())
+  razaoSocial        String         @map("razao_social") @db.VarChar(150)
+  nomeFantasia       String?        @map("nome_fantasia") @db.VarChar(150)
+  documento          String         @unique @db.VarChar(20)
+  email              String?        @db.VarChar(150)
+  telefone           String?        @db.VarChar(30)
+  enderecoCompleto   Json?          @map("endereco_completo")
+  limiteCredito      Decimal        @default(0.00) @map("limite_credito") @db.Decimal(14, 2)
+  condicaoPagamento  String?        @map("condicao_pagamento") @db.VarChar(50)
+  vendedorId         Int?           @map("vendedor_id")
+  vendedor           Usuario?       @relation("VendedorClientes", fields: [vendedorId], references: [id])
+  ativo              Boolean        @default(true)
+  criadoEm           DateTime       @default(now()) @map("criado_em")
+  atualizadoEm       DateTime       @default(now()) @updatedAt @map("atualizado_em")
+
+  pedidos            Pedido[]
+  contasReceber      ContaReceber[]
+
+  @@index([documento])
+  @@index([ativo])
+  @@map("clientes")
+}
+
+model Fornecedor {
+  id                   Int           @id @default(autoincrement())
+  razaoSocial          String        @map("razao_social") @db.VarChar(150)
+  nomeFantasia         String?       @map("nome_fantasia") @db.VarChar(150)
+  documento            String        @unique @db.VarChar(20)
+  email                String?       @db.VarChar(150)
+  telefone             String?       @db.VarChar(30)
+  enderecoCompleto     Json?         @map("endereco_completo")
+  prazoPagamentoPadrao String?       @map("prazo_pagamento_padrao") @db.VarChar(50)
+  ativo                Boolean       @default(true)
+  criadoEm             DateTime      @default(now()) @map("criado_em")
+  atualizadoEm         DateTime      @default(now()) @updatedAt @map("atualizado_em")
+
+  contasPagar          ContaPagar[]
+
+  @@map("fornecedores")
+}
+
+model CategoriaProduto {
+  id        Int       @id @default(autoincrement())
+  nome      String    @unique @db.VarChar(100)
+  descricao String?   @db.Text
+  criadoEm  DateTime  @default(now()) @map("criado_em")
+  produtos  Produto[]
+
+  @@map("categorias_produto")
+}
+
+model Produto {
+  id               Int                   @id @default(autoincrement())
+  sku              String                @unique @db.VarChar(50)
+  descricao        String                @db.VarChar(200)
+  categoriaId      Int?                  @map("categoria_id")
+  categoria        CategoriaProduto?     @relation(fields: [categoriaId], references: [id])
+  unidade          String                @default("UN") @db.VarChar(10)
+  precoVenda       Decimal               @default(0.00) @map("preco_venda") @db.Decimal(14, 2)
+  custoMedio       Decimal               @default(0.00) @map("custo_medio") @db.Decimal(14, 2)
+  estoqueMinimo    Decimal               @default(0.000) @map("estoque_minimo") @db.Decimal(14, 3)
+  controlaValidade Boolean               @default(false) @map("controla_validade")
+  ativo            Boolean               @default(true)
+  criadoEm         DateTime              @default(now()) @map("criado_em")
+  atualizadoEm     DateTime              @default(now()) @updatedAt @map("atualizado_em")
+
+  movimentacoes    MovimentacaoEstoque[]
+  itensPedido      ItemPedido[]
+
+  @@index([sku])
+  @@index([categoriaId])
+  @@map("produtos")
+}
+
+model MovimentacaoEstoque {
+  id            BigInt                  @id @default(autoincrement())
+  produtoId     Int                     @map("produto_id")
+  produto       Produto                 @relation(fields: [produtoId], references: [id])
+  tipo          TipoMovimentacaoEstoque
+  quantidade    Decimal                 @db.Decimal(14, 3)
+  custoUnitario Decimal                 @default(0.00) @map("custo_unitario") @db.Decimal(14, 2)
+  origemTipo    String?                 @map("origem_tipo") @db.VarChar(50)
+  origemId      BigInt?                 @map("origem_id")
+  usuarioId     Int?                    @map("usuario_id")
+  usuario       Usuario?                @relation(fields: [usuarioId], references: [id])
+  lote          String?                 @db.VarChar(50)
+  validade      DateTime?               @db.Date
+  motivo        String?                 @db.Text
+  criadoEm      DateTime                @default(now()) @map("criado_em")
+
+  @@index([produtoId])
+  @@index([criadoEm])
+  @@map("movimentacoes_estoque")
+}
+
+model Pedido {
+  id                 BigInt            @id @default(autoincrement())
+  clienteId          Int               @map("cliente_id")
+  cliente            Cliente           @relation(fields: [clienteId], references: [id])
+  vendedorId         Int               @map("vendedor_id")
+  vendedor           Usuario           @relation("VendedorPedidos", fields: [vendedorId], references: [id])
+  status             StatusPedido      @default(RASCUNHO)
+  totalBruto         Decimal           @default(0.00) @map("total_bruto") @db.Decimal(14, 2)
+  descontoPercentual Decimal           @default(0.00) @map("desconto_percentual") @db.Decimal(5, 2)
+  descontoValor      Decimal           @default(0.00) @map("desconto_valor") @db.Decimal(14, 2)
+  totalLiquido       Decimal           @default(0.00) @map("total_liquido") @db.Decimal(14, 2)
+  descontoAprovadoPor Int?             @map("desconto_aprovado_por")
+  aprovadorDesconto  Usuario?          @relation("AprovadorDescontos", fields: [descontoAprovadoPor], references: [id])
+  condicaoPagamento  String?           @map("condicao_pagamento") @db.VarChar(50)
+  observacoes        String?           @db.Text
+  criadoEm           DateTime          @default(now()) @map("criado_em")
+  atualizadoEm       DateTime          @default(now()) @updatedAt @map("atualizado_em")
+
+  itens              ItemPedido[]
+  historico          PedidoHistorico[]
+  contasReceber      ContaReceber[]
+
+  @@index([status])
+  @@index([clienteId])
+  @@index([criadoEm])
+  @@map("pedidos")
+}
+
+model ItemPedido {
+  id            BigInt   @id @default(autoincrement())
+  pedidoId      BigInt   @map("pedido_id")
+  pedido        Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produtoId     Int      @map("produto_id")
+  produto       Produto  @relation(fields: [produtoId], references: [id])
+  quantidade    Decimal  @db.Decimal(14, 3)
+  precoUnitario Decimal  @map("preco_unitario") @db.Decimal(14, 2)
+  desconto      Decimal  @default(0.00) @db.Decimal(14, 2)
+  subtotal      Decimal  @db.Decimal(14, 2)
+
+  @@map("itens_pedido")
+}
+
+model PedidoHistorico {
+  id         BigInt       @id @default(autoincrement())
+  pedidoId   BigInt       @map("pedido_id")
+  pedido     Pedido       @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  status     StatusPedido
+  usuarioId  Int?         @map("usuario_id")
+  usuario    Usuario?     @relation(fields: [usuarioId], references: [id])
+  observacao String?      @db.Text
+  criadoEm   DateTime     @default(now()) @map("criado_em")
+
+  @@map("pedidos_historico")
+}
+
+model CategoriaFinanceira {
+  id          Int                     @id @default(autoincrement())
+  nome        String                  @unique @db.VarChar(100)
+  tipo        TipoCategoriaFinanceira
+  grupoDRE    GrupoDRE                @map("grupo_dre")
+  ativo       Boolean                 @default(true)
+  contasPagar ContaPagar[]
+
+  @@map("categorias_financeiras")
+}
+
+model ContaReceber {
+  id             BigInt           @id @default(autoincrement())
+  pedidoId       BigInt?          @map("pedido_id")
+  pedido         Pedido?          @relation(fields: [pedidoId], references: [id])
+  clienteId      Int              @map("cliente_id")
+  cliente        Cliente          @relation(fields: [clienteId], references: [id])
+  parcela        Int              @default(1)
+  totalParcelas  Int              @default(1) @map("total_parcelas")
+  valor          Decimal          @db.Decimal(14, 2)
+  vencimento     DateTime         @db.Date
+  valorPago      Decimal          @default(0.00) @map("valor_pago") @db.Decimal(14, 2)
+  pagoEm         DateTime?        @map("pago_em")
+  formaPagamento String?          @map("forma_pagamento") @db.VarChar(50)
+  status         StatusFinanceiro @default(PENDENTE)
+  criadoEm       DateTime         @default(now()) @map("criado_em")
+  atualizadoEm   DateTime         @default(now()) @updatedAt @map("atualizado_em")
+
+  @@index([vencimento, status])
+  @@map("contas_receber")
+}
+
+model ContaPagar {
+  id            BigInt              @id @default(autoincrement())
+  fornecedorId  Int?                @map("fornecedor_id")
+  fornecedor    Fornecedor?         @relation(fields: [fornecedorId], references: [id])
+  categoriaId   Int                 @map("categoria_id")
+  categoria     CategoriaFinanceira @relation(fields: [categoriaId], references: [id])
+  descricao     String              @db.VarChar(200)
+  parcela       Int                 @default(1)
+  totalParcelas Int                 @default(1) @map("total_parcelas")
+  valor         Decimal             @db.Decimal(14, 2)
+  vencimento    DateTime            @db.Date
+  valorPago     Decimal             @default(0.00) @map("valor_pago") @db.Decimal(14, 2)
+  pagoEm        DateTime?           @map("pago_em")
+  status        StatusFinanceiro    @default(PENDENTE)
+  recorrente    Boolean             @default(false)
+  criadoEm      DateTime            @default(now()) @map("criado_em")
+  atualizadoEm  DateTime            @default(now()) @updatedAt @map("atualizado_em")
+
+  @@index([vencimento, status])
+  @@map("contas_pagar")
+}
+
+model Auditoria {
+  id         BigInt   @id @default(autoincrement())
+  usuarioId  Int?     @map("usuario_id")
+  usuario    Usuario? @relation(fields: [usuarioId], references: [id])
+  acao       String   @db.VarChar(50)
+  entidade   String   @db.VarChar(50)
+  entidadeId BigInt?  @map("entidade_id")
+  antes      Json?
+  depois     Json?
+  ip         String?  @db.VarChar(45)
+  criadoEm   DateTime @default(now()) @map("criado_em")
+
+  @@index([entidade, entidadeId])
+  @@map("auditoria")
+}
+
+model Importacao {
+  id          Int      @id @default(autoincrement())
+  origem      String   @db.VarChar(100)
+  arquivoNome String   @map("arquivo_nome") @db.VarChar(255)
+  status      String   @db.VarChar(50)
+  resumo      Json?
+  usuarioId   Int?     @map("usuario_id")
+  usuario     Usuario? @relation(fields: [usuarioId], references: [id])
+  criadoEm    DateTime @default(now()) @map("criado_em")
+
+  @@map("importacoes")
+}
+
