@@ -199,4 +199,4 @@ Resultados cobertos:
 ---
 
 ## 👨‍💻 Autor
-Desenvolvido por **Paulo HFA** para demonstração de arquitetura sênior de software para sistemas de gestão empresarial.
+Desenvolvido por **Paulo HFA** para sistemas de gestão empresarial.
